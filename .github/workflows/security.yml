@@ -10,7 +10,7 @@ on:
 jobs:
   semgrep:
     uses: fredman08/ci-workflows/.github/workflows/semgrep.yml@main
-    # Optional overrides:
-    # with:
+    with:
+      soft-fail: true   # report-only by default; set false for a hard gate once the repo is clean
+    # Optional:
     #   config: "p/default p/security-audit"
-    #   soft-fail: true

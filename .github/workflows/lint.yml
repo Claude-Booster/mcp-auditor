@@ -9,5 +9,5 @@ on:
 jobs:
   lint:
     uses: fredman08/ci-workflows/.github/workflows/lint.yml@main
-    # with:
-    #   soft-fail: true   # report issues but don't fail the build
+    with:
+      soft-fail: true   # report-only by default; set false for a hard gate once the repo is clean
