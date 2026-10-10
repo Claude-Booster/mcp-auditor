@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+
+# Restricted-identifier patterns (local only — never commit)
+.githooks/.blocked

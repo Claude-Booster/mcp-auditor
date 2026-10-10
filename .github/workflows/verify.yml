@@ -1,0 +1,101 @@
+# Server-side verification — mirrors the local .githooks/pre-commit blocked-word scan.
+# Deployed automatically by ~/.claude/scripts/setup-repo-verification.ps1
+#
+# WHY: a local `git commit --no-verify` bypasses the client-side hook. This job
+# re-runs the same restricted-identifier scan on the server, so a protected
+# branch cannot accept content that the local hook would have blocked.
+#
+# The blocked patterns are NEVER committed — they are personal/company identifiers.
+# They are read at runtime from the repo secret BLOCKED_PATTERNS (an ERE alternation),
+# exactly the way the local hook reads its gitignored .blocked file.
+
+name: verify
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for restricted identifiers
+        env:
+          BLOCKED_PATTERNS: ${{ secrets.BLOCKED_PATTERNS }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BLOCKED_PATTERNS:-}" ]; then
+            echo "::error::BLOCKED_PATTERNS secret is not set. Re-run setup-repo-verification.ps1."
+            exit 1
+          fi
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
+          fi
+
+          # First push / unknown base → diff against the repo root commit.
+          if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            base="$(git rev-list --max-parents=0 HEAD | tail -1)"
+          fi
+
+          fail=0
+
+          # 1) Added lines in changed files. The hook sources ARE scanned; only the
+          #    pattern-definition files are excluded (they hold pattern text), matching
+          #    the local hooks. Scanning the workflow itself too (no self-exclusion).
+          # NUL-delimited so paths with spaces survive intact (git -z also
+          # disables quotePath). Process substitution keeps the loop in THIS
+          # shell so `fail=1` persists — a pipe would run the loop in a
+          # subshell and silently lose the flag.
+          while IFS= read -r -d '' f; do
+            [ -f "$f" ] || continue
+            if git diff "$base" "$head" -- "$f" \
+                 | grep -E '^\+[^+]' \
+                 | grep -qiE "$BLOCKED_PATTERNS"; then
+              echo "::error file=$f::restricted identifier found in added lines"
+              fail=1
+            fi
+          done < <(git diff -z --name-only "$base" "$head" -- . \
+                    ':(exclude).githooks/.blocked' \
+                    ':(exclude).githooks/.blocked.example')
+
+          # 2) Commit author/committer identity across the range.
+          if git log --format='%an %ae|%cn %ce' "$base..$head" \
+               | grep -qiE "$BLOCKED_PATTERNS"; then
+            echo "::error::a commit author/committer identity matches a restricted pattern"
+            fail=1
+          fi
+
+          if [ "$fail" -ne 0 ]; then
+            echo "Verification failed — restricted content present. See annotations above."
+            exit 1
+          fi
+          echo "No restricted identifiers found."
+
+      # Server-side secret scanning. gitleaks runs LOCALLY in pre-commit; here we
+      # use TruffleHog (free for organizations, unlike gitleaks-action which needs
+      # a paid org license) with verification — it confirms whether a detected
+      # secret is still LIVE, separating real emergencies from noise. Scans the
+      # tree so it does not depend on a base/head diff range.
+      - name: TruffleHog verified-secret scan
+        uses: trufflesecurity/trufflehog@4dd8831c5f12599465d4d45c3c447b4018a34c85  # v3.97.9
+        with:
+          path: ./
+          extra_args: --only-verified

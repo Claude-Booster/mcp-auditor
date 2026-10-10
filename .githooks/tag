@@ -1,0 +1,54 @@
+#!/bin/sh
+# Opt-in creation-time guard for annotated tags. git has NO native pre-tag hook,
+# so this cannot fire automatically on `git tag -a`. Use it via the alias:
+#   git config alias.safetag '!sh .githooks/tag'
+#   git safetag <tagname>        # checks name + tagger identity, then you tag
+# pre-push is the guaranteed automatic gate; this is early feedback only.
+#
+# Real patterns live in .githooks/.blocked (gitignored); absent => skip.
+# $1 = tag name (optional)
+
+BLOCKED_FILE="$(git rev-parse --show-toplevel 2>/dev/null)/.githooks/.blocked"
+
+# BLOCKED_NAME_1 BLOCKED_NAME_2 BLOCKED_EMAIL BLOCKED_ORG BLOCKED_ORG_DOMAIN
+
+[ -f "$BLOCKED_FILE" ] || exit 0
+
+FORBIDDEN=""
+while IFS= read -r line; do
+    line=$(printf '%s' "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    case "$line" in
+        ''|\#*) continue ;;
+    esac
+    if [ -z "$FORBIDDEN" ]; then
+        FORBIDDEN="$line"
+    else
+        FORBIDDEN="$FORBIDDEN|$line"
+    fi
+done < "$BLOCKED_FILE"
+
+[ -z "$FORBIDDEN" ] && exit 0
+
+printf '' | grep -qE "$FORBIDDEN" 2>/dev/null
+if [ "$?" -ge 2 ]; then
+    echo "[tag] WARNING: .githooks/.blocked has an invalid pattern — check skipped." >&2
+    exit 0
+fi
+
+TAG_NAME="${1:-}"
+if [ -n "$TAG_NAME" ] && printf '%s' "$TAG_NAME" | grep -iqE "$FORBIDDEN"; then
+    echo "[tag] BLOCKED: tag name contains a restricted identifier." >&2
+    exit 1
+fi
+
+CFG_NAME="$(git config user.name 2>/dev/null || true)"
+CFG_EMAIL="$(git config user.email 2>/dev/null || true)"
+TAGGER_NAME="${GIT_COMMITTER_NAME:-${GIT_AUTHOR_NAME:-$CFG_NAME}}"
+TAGGER_EMAIL="${GIT_COMMITTER_EMAIL:-${GIT_AUTHOR_EMAIL:-$CFG_EMAIL}}"
+
+if printf '%s' "$TAGGER_NAME $TAGGER_EMAIL" | grep -iqE "$FORBIDDEN"; then
+    echo "[tag] BLOCKED: tagger identity contains a restricted identifier." >&2
+    echo "  Fix: git config user.name 'Developer' && git config user.email 'you@users.noreply.github.com'" >&2
+    exit 1
+fi
+exit 0
