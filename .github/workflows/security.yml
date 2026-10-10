@@ -1,0 +1,16 @@
+# Copy this file into each repo at: .github/workflows/security.yml
+# It calls the shared reusable workflow in <user>/ci-workflows.
+# Replace fredman08 below if your GitHub username differs.
+name: Security
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  semgrep:
+    uses: fredman08/ci-workflows/.github/workflows/semgrep.yml@main
+    # Optional overrides:
+    # with:
+    #   config: "p/default p/security-audit"
+    #   soft-fail: true

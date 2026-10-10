@@ -1,0 +1,13 @@
+# Copy to .github/workflows/lint.yml in a repo to lint on PRs and pushes to main.
+# Auto-detects Python (ruff) and/or Node (eslint + tsc).
+name: Lint
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    uses: fredman08/ci-workflows/.github/workflows/lint.yml@main
+    # with:
+    #   soft-fail: true   # report issues but don't fail the build
