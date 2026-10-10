@@ -1,0 +1,161 @@
+#!/bin/sh
+# Block commits that would expose restricted identifiers.
+#
+# Real patterns live in .githooks/.blocked (gitignored, one grep ERE pattern per
+# line). This committed hook contains no restricted strings — it only knows the
+# opaque labels below and loads the real patterns at runtime. If .blocked is
+# absent the check is skipped, so a fresh clone is never blocked and this file
+# reveals nothing about what is blocked.
+#
+# Checks, in git's own identity-resolution order:
+#   1. GIT_AUTHOR_NAME / GIT_AUTHOR_EMAIL        (env — always override)
+#   2. GIT_COMMITTER_NAME / GIT_COMMITTER_EMAIL  (env — always override)
+#   3. git config user.name / user.email
+#   4. OS fallback: USERNAME / USERDOMAIN / COMPUTERNAME / whoami / hostname
+#      (only when git config is unset — that is when git falls back to OS identity)
+#   5. Staged file content (.githooks/ excluded — it defines the labels)
+#
+# Activate with: git config core.hooksPath .githooks
+
+BLOCKED_FILE="$(git rev-parse --show-toplevel 2>/dev/null)/.githooks/.blocked"
+
+# BLOCKED_NAME_1 BLOCKED_NAME_2 BLOCKED_EMAIL BLOCKED_ORG BLOCKED_ORG_DOMAIN
+# (opaque labels only — the real values are read from .blocked at runtime)
+
+if [ ! -f "$BLOCKED_FILE" ]; then
+    echo "[pre-commit] WARNING: .githooks/.blocked not found — identifier check skipped."
+    echo "  Copy .githooks/.blocked.example to .githooks/.blocked and fill in your patterns."
+    exit 0
+fi
+
+# Build an ERE alternation from non-empty, non-comment lines.
+FORBIDDEN=""
+while IFS= read -r line; do
+    line=$(printf '%s' "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    case "$line" in
+        ''|\#*) continue ;;
+    esac
+    if [ -z "$FORBIDDEN" ]; then
+        FORBIDDEN="$line"
+    else
+        FORBIDDEN="$FORBIDDEN|$line"
+    fi
+done < "$BLOCKED_FILE"
+
+[ -z "$FORBIDDEN" ] && exit 0
+
+# Guard against a malformed pattern in .blocked: a bad ERE makes grep exit >=2,
+# which every `if grep` below would misread as "no match" -> silent false negative.
+# Detect it once and skip loudly rather than pass a leak through unnoticed.
+printf '' | grep -qE "$FORBIDDEN" 2>/dev/null
+if [ "$?" -ge 2 ]; then
+    echo "[pre-commit] WARNING: .githooks/.blocked has an invalid pattern — check skipped." >&2
+    echo "  Fix the pattern (grep ERE syntax) so the guard can run." >&2
+    exit 0
+fi
+
+FAIL=0
+
+_check() {
+    # $1 = label, $2 = value
+    [ -z "$2" ] && return 0
+    if printf '%s' "$2" | grep -iqE "$FORBIDDEN"; then
+        printf '[pre-commit] BLOCKED (%s): restricted identifier in commit identity.\n' "$1" >&2
+        printf '  Fix: git config user.name  "Developer"\n' >&2
+        printf '       git config user.email "you@users.noreply.github.com"\n' >&2
+        FAIL=1
+    fi
+}
+
+# 1. GIT_AUTHOR_* / 2. GIT_COMMITTER_* (env overrides embedded verbatim in the commit)
+_check "GIT_AUTHOR_NAME"     "${GIT_AUTHOR_NAME:-}"
+_check "GIT_AUTHOR_EMAIL"    "${GIT_AUTHOR_EMAIL:-}"
+_check "GIT_COMMITTER_NAME"  "${GIT_COMMITTER_NAME:-}"
+_check "GIT_COMMITTER_EMAIL" "${GIT_COMMITTER_EMAIL:-}"
+
+# 3. git config
+CFG_NAME="$(git config user.name 2>/dev/null || true)"
+CFG_EMAIL="$(git config user.email 2>/dev/null || true)"
+_check "user.name"  "$CFG_NAME"
+_check "user.email" "$CFG_EMAIL"
+
+# 4. OS fallback — only when git config is unset (git would then use OS identity)
+if [ -z "$CFG_NAME" ] || [ -z "$CFG_EMAIL" ]; then
+    _check "OS username" "${USERNAME:-$(whoami 2>/dev/null || true)}"
+    _check "OS domain"   "${USERDOMAIN:-}"
+    _check "OS hostname" "${COMPUTERNAME:-$(hostname 2>/dev/null || true)}"
+fi
+
+# 5. Staged file names AND content. ACMRT so renames (R) and type-changes (T) are
+# scanned too. The hook's OWN sources ARE scanned — only the pattern-definition
+# files are skipped (they legitimately hold pattern text). This replaces an older
+# blanket .githooks/* exclusion that blinded the guard to identifiers in its own
+# source (the "checker that exempts itself" — see docs/POSTMORTEM.md).
+while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    case "$file" in
+        .githooks/.blocked|.githooks/.blocked.example) continue ;;
+    esac
+    # 5a. The path itself — a filename can carry an identifier even when the
+    #     file's content is clean, so scan the staged path too.
+    if printf '%s' "$file" | grep -iqE "$FORBIDDEN"; then
+        printf '[pre-commit] BLOCKED (filename): %s\n' "$file" >&2
+        FAIL=1
+    fi
+    # 5b. File content.
+    if git show ":$file" 2>/dev/null | grep -iqE "$FORBIDDEN"; then
+        printf '[pre-commit] BLOCKED (%s): staged content contains a restricted identifier.\n' "$file" >&2
+        FAIL=1
+    fi
+done <<EOF
+$(git diff --cached --name-only --diff-filter=ACMRT 2>/dev/null)
+EOF
+
+# 6. Secret scan (gitleaks) — layered on top of the identifier checks: catches API
+# keys, tokens, private keys and .env values the identifier list does not know about.
+# FAIL-CLOSED: a scanner that is absent must BLOCK, not skip. A silent no-scan
+# manufactures false confidence (nobody reads stderr on a successful commit) — the
+# exact failure shape this guards against. Override explicitly if you must.
+# exit 1 => leak (block); exit >1 => scanner error (warn, do not block).
+if command -v gitleaks >/dev/null 2>&1; then
+    _gl_out=$(gitleaks git --staged --no-banner --redact 2>&1)
+    _gl_rc=$?
+    if [ "$_gl_rc" -eq 1 ]; then
+        echo "[pre-commit] BLOCKED: gitleaks detected a secret in staged changes." >&2
+        printf '%s\n' "$_gl_out" | sed 's/^/    /' >&2
+        echo "  Remove the secret, or allowlist it in .gitleaks.toml if it is a false positive." >&2
+        FAIL=1
+    elif [ "$_gl_rc" -gt 1 ]; then
+        echo "[pre-commit] NOTE: gitleaks errored (exit $_gl_rc) — secret scan inconclusive." >&2
+        printf '%s\n' "$_gl_out" | sed 's/^/    /' >&2
+    fi
+elif [ -n "${CCMEM_ALLOW_NO_SCANNER:-}" ]; then
+    echo "[pre-commit] =====================================================================" >&2
+    echo "[pre-commit] WARNING: no secret scanner found and the override is set." >&2
+    echo "[pre-commit] SECRETS ARE NOT BEING SCANNED FOR THIS COMMIT." >&2
+    echo "[pre-commit] Proceeding only because CCMEM_ALLOW_NO_SCANNER is set." >&2
+    echo "[pre-commit] =====================================================================" >&2
+else
+    echo "[pre-commit] BLOCKED: no secret scanner found — commit refused (fail-closed)." >&2
+    echo "  gitleaks is not on PATH, so secrets cannot be scanned for this commit." >&2
+    echo "  Install:  winget install Gitleaks.Gitleaks" >&2
+    echo "  Override (NOT recommended — secrets will be unscanned):" >&2
+    echo "    CCMEM_ALLOW_NO_SCANNER=1 git commit ..." >&2
+    FAIL=1
+fi
+
+# 7. Project-specific extension point. A repo may add a .githooks/pre-commit.local
+# for its own checks (lint, typecheck, ...). It is NOT part of the canonical
+# committed set, so it SURVIVES setup-commit-guard syncs that overwrite this file.
+# Invoked via `sh` (no exec-bit dependency — portable on Windows). Runs last; a
+# non-zero exit blocks the commit, same as the checks above.
+_LOCAL_HOOK="$(git rev-parse --show-toplevel 2>/dev/null)/.githooks/pre-commit.local"
+if [ -f "$_LOCAL_HOOK" ]; then
+    sh "$_LOCAL_HOOK" || FAIL=1
+fi
+
+if [ "$FAIL" -ne 0 ]; then
+    printf '\n[pre-commit] Commit blocked. Remove the restricted content and retry.\n' >&2
+    exit 1
+fi
+exit 0

@@ -1,0 +1,28 @@
+# Restricted-identifier block list — one grep BRE pattern per line.
+# Copy this file to .githooks/.blocked and replace the labels with real values.
+# .blocked is gitignored and never pushed; these hooks reveal nothing on their own.
+#
+# Groups (opaque labels — fill in on your machine only):
+#   BLOCKED_NAME_1        e.g. First Last
+#   BLOCKED_NAME_2        e.g. an alias/handle
+#   BLOCKED_EMAIL         e.g. you\.name@example\.com
+#   BLOCKED_ORG           e.g. YourEmployer
+#   BLOCKED_ORG_DOMAIN    e.g. employer\.com
+#
+# Notes:
+#   - Escape regex metacharacters: '.' -> '\.'
+#   - Matching is case-insensitive (grep -i).
+#   - A bare org token (e.g. YourEmployer) already matches its domain substring.
+#   - Patterns are grep ERE (the hooks and CI both match with `grep -iE`).
+BLOCKED_NAME_1
+BLOCKED_NAME_2
+BLOCKED_EMAIL
+BLOCKED_ORG
+BLOCKED_ORG_DOMAIN
+
+# Ready-to-use default (keep as-is, not a placeholder): Windows 8.3 short-path
+# forms. The filesystem derives these from long names (e.g. a long user-profile
+# dir becomes C:\Users\LONGNA~1), so a short path can leak an identity that the
+# long-form patterns above never see. Anchored to \Users\ to avoid matching
+# unrelated 8.3 names like PROGRA~1 (Program Files).
+[Uu]sers\\[A-Za-z0-9]+~[0-9]
