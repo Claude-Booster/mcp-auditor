@@ -1,0 +1,54 @@
+<svg viewBox="0 0 900 220" width="900" height="220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="What mcp-auditor inspects across MCP metadata">
+  <defs>
+    <linearGradient id="cbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0c1a28"/>
+      <stop offset="1" stop-color="#0f2130"/>
+    </linearGradient>
+  </defs>
+  <rect width="900" height="220" fill="url(#cbg)"/>
+
+  <text x="60" y="30" font-family="ui-monospace,'SF Mono',Menlo,Consolas,monospace"
+        font-size="14" font-weight="700" fill="#49c7dd">inspects every metadata channel a server can poison</text>
+
+  <!-- scan rail -->
+  <line x1="66" y1="52" x2="66" y2="196" stroke="#2b4157" stroke-width="2"/>
+  <!-- traveling scan dot -->
+  <circle cx="66" r="5.5" fill="#49c7dd">
+    <animate attributeName="cy" values="54;190;190" keyTimes="0;0.85;1" dur="7.5s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.06;0.9;1" dur="7.5s" repeatCount="indefinite"/>
+  </circle>
+
+  <g font-family="ui-monospace,'SF Mono',Menlo,Consolas,monospace">
+    <!-- row template: dot + label + note -->
+    <g>
+      <circle cx="66" cy="60" r="3.5" fill="#56c596"/>
+      <text x="86" y="64" font-size="13.5" fill="#eaf1f6">names &amp; descriptions</text>
+      <text x="340" y="64" font-size="12" fill="#6f8496">injected model-directed instructions</text>
+    </g>
+    <g>
+      <circle cx="66" cy="86" r="3.5" fill="#56c596"/>
+      <text x="86" y="90" font-size="13.5" fill="#eaf1f6">input / output schemas</text>
+      <text x="340" y="90" font-size="12" fill="#6f8496">enum values &amp; property names, at any depth</text>
+    </g>
+    <g>
+      <circle cx="66" cy="112" r="3.5" fill="#56c596"/>
+      <text x="86" y="116" font-size="13.5" fill="#eaf1f6">resources &amp; prompts</text>
+      <text x="340" y="116" font-size="12" fill="#6f8496">not just tools</text>
+    </g>
+    <g>
+      <circle cx="66" cy="138" r="3.5" fill="#56c596"/>
+      <text x="86" y="142" font-size="13.5" fill="#eaf1f6">rug-pull / drift</text>
+      <text x="340" y="142" font-size="12" fill="#6f8496">baselines on first use, flags later changes</text>
+    </g>
+    <g>
+      <circle cx="66" cy="164" r="3.5" fill="#56c596"/>
+      <text x="86" y="168" font-size="13.5" fill="#eaf1f6">cross-server shadowing</text>
+      <text x="340" y="168" font-size="12" fill="#6f8496">duplicate tool names across servers</text>
+    </g>
+    <g>
+      <circle cx="66" cy="190" r="3.5" fill="#56c596"/>
+      <text x="86" y="194" font-size="13.5" fill="#eaf1f6">provenance</text>
+      <text x="340" y="194" font-size="12" fill="#6f8496">unpinned npx, plaintext URLs, static creds (key names only)</text>
+    </g>
+  </g>
+</svg>
