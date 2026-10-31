@@ -1,5 +1,5 @@
 # Server-side verification — mirrors the local .githooks/pre-commit blocked-word scan.
-# Deployed automatically by ~/.claude/scripts/setup-repo-verification.ps1
+# Deployed automatically by ~/.claude/scripts/setup-commit-guard.ps1
 #
 # WHY: a local `git commit --no-verify` bypasses the client-side hook. This job
 # re-runs the same restricted-identifier scan on the server, so a protected
@@ -38,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${BLOCKED_PATTERNS:-}" ]; then
-            echo "::error::BLOCKED_PATTERNS secret is not set. Re-run setup-repo-verification.ps1."
+            echo "::error::BLOCKED_PATTERNS secret is not set. Re-run setup-commit-guard.ps1."
             exit 1
           fi
 

@@ -129,18 +129,18 @@ if command -v gitleaks >/dev/null 2>&1; then
         echo "[pre-commit] NOTE: gitleaks errored (exit $_gl_rc) — secret scan inconclusive." >&2
         printf '%s\n' "$_gl_out" | sed 's/^/    /' >&2
     fi
-elif [ -n "${CCMEM_ALLOW_NO_SCANNER:-}" ]; then
+elif [ -n "${ALLOW_NO_SCANNER:-}" ]; then
     echo "[pre-commit] =====================================================================" >&2
     echo "[pre-commit] WARNING: no secret scanner found and the override is set." >&2
     echo "[pre-commit] SECRETS ARE NOT BEING SCANNED FOR THIS COMMIT." >&2
-    echo "[pre-commit] Proceeding only because CCMEM_ALLOW_NO_SCANNER is set." >&2
+    echo "[pre-commit] Proceeding only because ALLOW_NO_SCANNER is set." >&2
     echo "[pre-commit] =====================================================================" >&2
 else
     echo "[pre-commit] BLOCKED: no secret scanner found — commit refused (fail-closed)." >&2
     echo "  gitleaks is not on PATH, so secrets cannot be scanned for this commit." >&2
     echo "  Install:  winget install Gitleaks.Gitleaks" >&2
     echo "  Override (NOT recommended — secrets will be unscanned):" >&2
-    echo "    CCMEM_ALLOW_NO_SCANNER=1 git commit ..." >&2
+    echo "    ALLOW_NO_SCANNER=1 git commit ..." >&2
     FAIL=1
 fi
 
