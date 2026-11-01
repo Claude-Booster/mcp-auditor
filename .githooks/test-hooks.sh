@@ -89,7 +89,7 @@ printf 'totally clean\n' > s.txt; git add s.txt
 
 # 10. no secret scanner + explicit override -> allowed
 printf 'totally clean\n' > s2.txt; git add s2.txt
-( PATH="$RP"; export PATH; CCMEM_ALLOW_NO_SCANNER=1 sh .githooks/pre-commit >/dev/null 2>&1 ) \
+( PATH="$RP"; export PATH; ALLOW_NO_SCANNER=1 sh .githooks/pre-commit >/dev/null 2>&1 ) \
     && ok "scanner-absent override allows" || no "scanner-absent override allows"; unstage s2.txt
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
